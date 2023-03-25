@@ -1,6 +1,7 @@
 import cv2
 import argparse
 import time
+import numpy as np
 
 from ultralytics import YOLO
 import supervision as sv
@@ -16,7 +17,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--webcam-refresh-rate",
-        default=.2,
+        default=.1,
         type=float
     )
     args = parser.parse_args()
@@ -37,37 +38,60 @@ def initialize_webcam(webcam_resolution) -> cv2.VideoCapture:
     vid_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
     return vid_cap
 
-def main():
-    args = parse_arguments()
-    refresh_rate = args.webcam_refresh_rate
+class DemoModel:
+    def __init__(self, weights_file: str, demo_label: str):
+        self.model = YOLO(weights_file)
+        self.class_labels = self.model.model.names
+        self.demo_label =  demo_label
 
-    video_capture = initialize_webcam(args.webcam_resolution)
-
-    model = YOLO("yolov8n.pt")
-
-    while True:
-        time.sleep(refresh_rate)
-        ret, frame = video_capture.read()
-        if not ret: break # end of video stream
-
-        result = model(frame, agnostic_nms=True)[0]
+    # Run the model on the frame and return the detections
+    def inferrence(self, frame: np.ndarray) -> sv.Detections:
+        result = self.model(frame, agnostic_nms=True)[0]
         detections = sv.Detections.from_yolov8(result)
+        return detections
+
+    # Match detected objects to their labels in the model
+    def generate_labels(self, detections: sv.Detections) -> list:
         labels = [
-            f"{model.model.names[class_id]} {confidence:0.2f}"
+            f"{self.class_labels[class_id]} {confidence:0.2f}"
             for _, confidence, class_id, _
             in detections
         ]
+        return labels
+    
+    @staticmethod
+    def annotate_frame(frame: np.ndarray, detections: sv.Detections, labels: list) -> np.ndarray:
         frame = box_annotator.annotate(
             scene=frame, 
             detections=detections, 
             labels=labels
         )  
-        
-        cv2.imshow("yolov8 COCO", frame)
+        return frame
+
+    def detect_and_show(self, frame: np.ndarray) -> None:
+        detections = self.inferrence(frame)
+        labels = self.generate_labels(detections)
+        frame = self.annotate_frame(frame, detections, labels)
+        cv2.imshow(self.demo_label, frame)
+
+
+def main():
+    args = parse_arguments()
+    video_capture = initialize_webcam(args.webcam_resolution)
+
+    benchmark_model = DemoModel("yolov8n.pt", "Benchmark")
+    proof_of_concept_model = DemoModel("test_trained.pt", "Proof of Concept")
+
+    while True:
+        time.sleep(args.webcam_refresh_rate)
+        ret, frame = video_capture.read()
+        if not ret: break # end of video stream
+
+        benchmark_model.detect_and_show(frame)
+        proof_of_concept_model.detect_and_show(frame)
 
         if (cv2.waitKey(30) == 27):
             break
-
 
 if __name__ == "__main__":
     main()

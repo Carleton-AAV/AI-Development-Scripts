@@ -16,8 +16,8 @@ def parse_arguments() -> argparse.Namespace:
         type=int
     )
     parser.add_argument(
-        "--webcam-refresh-rate",
-        default=.1,
+        "--update_rate",
+        default=.05,
         type=float
     )
     args = parser.parse_args()
@@ -71,24 +71,29 @@ class DemoModel:
     def detect_and_show(self, frame: np.ndarray) -> None:
         detections = self.inferrence(frame)
         labels = self.generate_labels(detections)
-        frame = self.annotate_frame(frame, detections, labels)
-        cv2.imshow(self.demo_label, frame)
+        annotated_frame = self.annotate_frame(frame, detections, labels)
+        cv2.imshow(self.demo_label, annotated_frame)
+
+models = [ 
+    DemoModel("yolov8n.pt", "Benchmark"),
+    DemoModel("test_trained.pt", "Proof of Concept"),
+]
 
 
 def main():
     args = parse_arguments()
     video_capture = initialize_webcam(args.webcam_resolution)
 
-    benchmark_model = DemoModel("yolov8n.pt", "Benchmark")
-    proof_of_concept_model = DemoModel("test_trained.pt", "Proof of Concept")
 
     while True:
-        time.sleep(args.webcam_refresh_rate)
-        ret, frame = video_capture.read()
-        if not ret: break # end of video stream
+        # The update wait is within this loops such that compute budget isn't exceeded 
+        # with multiple models and that it only scales with the update rate
+        for model in models:
+            time.sleep(args.update_rate)
+            ret, frame = video_capture.read()
 
-        benchmark_model.detect_and_show(frame)
-        proof_of_concept_model.detect_and_show(frame)
+            if not ret: break # end of video stream
+            model.detect_and_show(frame)
 
         if (cv2.waitKey(30) == 27):
             break

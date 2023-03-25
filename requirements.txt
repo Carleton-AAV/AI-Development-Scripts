@@ -1,0 +1,4 @@
+numpy==1.21.6
+opencv_python==4.7.0.72
+supervision==0.3.2
+ultralytics==8.0.57
